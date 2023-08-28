@@ -1,0 +1,39 @@
+{% set data= load_setup_py_data() %}
+
+package:
+  name: ts-audio-broadcaster
+  version: {{ data.get('version') }}
+
+source:
+  path: ../
+
+build:
+  noarch: generic
+  script: {{ PYTHON }} -m pip install --no-deps --ignore-installed .
+  entry_points:
+    - run_audio_broadcaster = lsst.ts.audio.broadcaster:run_audio_broadcaster
+  script_env:
+    - PATH
+    - PYTHONPATH
+    - LD_LIBRARY_PATH
+    - OSPL_HOME
+    - PYTHON_BUILD_VERSION
+    - PYTHON_BUILD_LOCATION
+
+requirements:
+  host:
+    - python {{ python }}
+    - pip
+    - setuptools_scm
+    - setuptools
+    - pytest-runner
+  run:
+    - python {{ python }}
+    - setuptools
+    - setuptools_scm
+    - ts-idl
+    - ts-salobj
+    - requests
+    - numpy
+    - astropy
+    - pillow
