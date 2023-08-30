@@ -10,6 +10,9 @@ classifiers = [ "Programming Language :: Python :: 3" ]
 urls = { documentation = "https://ts-audio-broadcaster.lsst.io", repository = "https://github.com/lsst-ts/ts_audio_broadcaster" }
 dynamic = [ "version" ]
 
+[project.scripts]
+run_audio_broadcaster = "lsst.ts.audio.broadcaster:run_audio_broadcaster"
+
 [tool.setuptools.dynamic]
 version = { attr = "setuptools_scm.get_version" }
 

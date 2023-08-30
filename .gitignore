@@ -25,3 +25,7 @@ pytest_session.txt
 
 # VSCode
 **/.vscode
+.pre-commit-config.yaml
+.flake8
+.isort.cfg
+.mypy.ini

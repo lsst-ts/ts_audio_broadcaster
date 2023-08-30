@@ -1,13 +1,13 @@
+__all__ = ["Station"]
+
 import asyncio
-import pyaudio
+import logging
 import socket
 import wave
-import tornado
+from typing import Optional
 
+import pyaudio
 from pydub import AudioSegment
-
-
-__all__ = ['Station']
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
@@ -15,48 +15,122 @@ RATE = 44100
 CHUNK = 4096
 BUFFER_DURATION = 5  # Adjust this value as needed
 
+
 class Station:
     """
     A class that represents a station that can connect to a microphone,
     record audio and stream it!
+
+    Parameters
+    ----------
+    log : logging.Logger
+        Logger to use for logging
     """
-    def __init__(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    def __init__(self, log):
+        self.log: logging.Logger = log.getChild(type(self).__name__)
+        self.sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # self.pyaudio = pyaudio.PyAudio()
-        self.buffer = []
-        self.current_pos = None
-    
-    def connect(self, host, port):
-        print("Connecting to the server...", flush=True)
+        self.buffer: list = []
+        self.current_pos: Optional[int] = None
+        self._connected_mic: bool = False
+
+    def connect(self, host: str, port: int):
+        """Connect to the microphone server with a socket connection.
+
+        Parameters
+        ----------
+        host : str
+            IP of the microphone server, e.g. '10.10.1.1'
+        port : int
+            Port of the microphone server, e.g. 4444
+
+        Raises
+        ------
+        RuntimeError
+            If host or port are empty
+            If the socket connection is already established
+        """
+
+        if host == "" or port is None:
+            raise RuntimeError("Host or port cannot be empty!")
+
+        if self._connected_mic:
+            raise RuntimeError("Already connected to microphone!")
+
         self.sock.connect((host, port))
-    
+        self._connected_mic = True
+        self.log.info(f"Connected to {host}:{port}")
+
     def add_frame_to_buffer(self, frame):
         self.buffer.append(frame)
         self.current_pos = len(self.buffer) - 1
-    
+
+    def set_emtpy_buffer(self):
+        self.buffer = []
+        self.current_pos = None
+
+    def assert_microphone_connected(self):
+        if not self._connected_mic:
+            raise RuntimeError("Microphone not connected!")
+
     async def start_fill_buffer(self):
-        print("Filling buffer...", flush=True)
-        audio_buffer = b''  # Initialize an empty byte buffer
+        """Start filling the buffer with audio data from the microphone server.
+
+        This method will run forever until the socket connection is broken.
+
+        Notes
+        -----
+        This method will add an audio frame to the buffer every time the
+        internal buffer is filled with enough data for playback.
+
+        If the station buffer reaches 1000 frames, it will be emptied.
+
+        Raises
+        ------
+        RuntimeError
+            If the microphone is not connected
+            If the socket connection is broken
+        """
+        self.assert_microphone_connected()
+        self.log.info("Filling buffer...")
+        audio_buffer = b""
         try:
             while True:
+                if len(self.buffer) >= 1000:
+                    self.set_emtpy_buffer()
+
                 await asyncio.sleep(0.00001)
-                data = self.sock.recv(CHUNK)  # Receive audio data
-                if data == b'':
+                data = self.sock.recv(CHUNK)
+                if data == b"":
                     raise RuntimeError("socket connection broken")
                 audio_buffer += data
 
-                # Check if the buffer is filled with enough data for playback
                 if len(audio_buffer) >= int(RATE * BUFFER_DURATION):
                     frame = audio_buffer[:CHUNK]
-                    self.add_frame_to_buffer(frame) # Play the first chunk of buffered data
-                    audio_buffer = audio_buffer[CHUNK:] # Remove the played data from the buffer
-        except Exception as e:
-            print(e, flush=True)
+                    self.add_frame_to_buffer(frame)
+                    audio_buffer = audio_buffer[CHUNK:]
+        except Exception:
+            # TODO: Handle this better
+            pass
 
-    async def transform_and_transmit(self, buffer):
-        print("Transforming and transmitting...", flush=True)
-        wave_file_name = 'test_audio.wav'
-        with wave.open(wave_file_name, 'wb') as wf:
+    async def transform_and_transmit(self, buffer: list):
+        """Create a wave file from the buffer and transmit it to the client
+        through mp3 bytes chunks.
+
+        Parameters
+        ----------
+        buffer : list
+            List of audio frames to transmit
+
+        Yields
+        ------
+        data : bytes
+            Bytes of the mp3 file
+        """
+        self.log.debug("Transforming and transmitting...")
+        wave_file_name = "test_audio.wav"
+        with wave.open(wave_file_name, "wb") as wf:
             wf.setnchannels(CHANNELS)
             # wf.setsampwidth(self.pyaudio.get_sample_size(FORMAT))
             wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
@@ -64,73 +138,18 @@ class Station:
 
             for frame in buffer:
                 wf.writeframes(frame)
-        
-        exported_file = 'output.mp3'
+
+        exported_file = "output.mp3"
         audio_segment = AudioSegment.from_file(wave_file_name)
         audio_segment.export(exported_file, format="mp3")
 
-        with open(exported_file, 'rb') as f:
+        with open(exported_file, "rb") as f:
             data = f.read(CHUNK)
             while data:
                 yield data
                 data = f.read(CHUNK)
-    
+
     def clean(self):
-        print('Shutting down')
+        self.log.info("Cleaning up...")
         self.sock.close()
-        self.pyaudio.terminate()
-
-
-station = Station()
-
-class AudioHandler(tornado.web.RequestHandler):
-    def initialize(self):
-        self.is_client_connected = True
-        self.from_pos = None
-
-    async def get(self):
-        self.from_pos = len(station.buffer) - 1 if len(station.buffer) > 0 else 0
-        self.set_header('Content-Type', 'audio/mpeg')
-        try:
-            while self.is_client_connected:
-                client_buffer = station.buffer[self.from_pos:]
-                if (len(client_buffer) <= 50):
-                    print("Waiting for buffer to fill...", flush=True)
-                    await asyncio.sleep(1)
-                    continue
-                async for frame in station.transform_and_transmit(client_buffer):
-                    self.write(frame)
-                self.flush()
-                self.from_pos = len(station.buffer) - 1
-        except Exception as e:
-            print(e, flush=True)
-    
-    def on_connection_close(self):
-        print("Connection closed!", flush=True)
-        self.is_client_connected = False
-
-    def on_finish(self):
-        print("Finished!", flush=True)
-
-def make_app():
-    return tornado.web.Application([
-        (r'/audio_feed', AudioHandler),
-    ])
-
-async def check_buffer_len():
-    while True:
-        print("Buffer len:", flush=True)
-        print(len(station.buffer), flush=True)
-        await asyncio.sleep(1)
-
-async def main():
-    app = make_app()
-    app.listen(8888)
-    station.connect('192.168.1.167', 4444)
-    asyncio.create_task(check_buffer_len())
-    asyncio.create_task(station.start_fill_buffer())
-    await asyncio.Event().wait()
-
-
-if __name__ == '__main__':
-    asyncio.run(main())
+        # self.pyaudio.terminate()
