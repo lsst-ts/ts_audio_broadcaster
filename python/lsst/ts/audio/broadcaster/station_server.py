@@ -40,7 +40,7 @@ class AudioHandler(tornado.web.RequestHandler):
     """Tornado web handler to serve audio stream to clients.
 
     Clients that connects using the GET method will continuously
-    eceive audio data from the microphone station.
+    receive audio data buffered from the microphone station.
 
     Parameters
     ----------
@@ -55,6 +55,8 @@ class AudioHandler(tornado.web.RequestHandler):
         self.log: logging.Logger = log.getChild(type(self).__name__)
         self.is_client_connected: bool = True
         self.from_pos: Optional[int] = None
+        self.client_buffer_min_length: int = 50
+        self.client_buffer_fill_interval: float = 1
 
     async def get(self):
         self.log.debug("New connection!")
@@ -62,20 +64,18 @@ class AudioHandler(tornado.web.RequestHandler):
             len(self.station.buffer) - 1 if len(self.station.buffer) > 0 else 0
         )
         self.set_header("Content-Type", "audio/mpeg")
-        try:
-            while self.is_client_connected:
-                client_buffer = self.station.buffer[self.from_pos :]
-                if len(client_buffer) <= 50:
-                    self.log.debug("Waiting 1 sec for buffer to fill...")
-                    await asyncio.sleep(1)
-                    continue
-                async for frame in self.station.transform_and_transmit(client_buffer):
-                    self.write(frame)
-                self.flush()
-                self.from_pos = len(self.station.buffer) - 1
-        except Exception:
-            # TODO: Handle this better
-            pass
+        while self.is_client_connected:
+            client_buffer = self.station.buffer[self.from_pos :]
+            if len(client_buffer) < self.client_buffer_min_length:
+                self.log.debug(
+                    f"Waiting {self.client_buffer_fill_interval} sec for buffer to fill..."
+                )
+                await asyncio.sleep(self.client_buffer_fill_interval)
+                continue
+            async for frame in self.station.transform_and_transmit(client_buffer):
+                self.write(frame)
+            self.flush()
+            self.from_pos = len(self.station.buffer) - 1
 
     def on_connection_close(self):
         self.log.debug("Connection closed!")
@@ -88,23 +88,25 @@ class AudioBroadcasterServer:
 
     Parameters
     ----------
-    server : str
-        IP of the microphone server, e.g.
+    host : str
+        IP of the microphone server, e.g. 10.10.1.1
+    port : str
+        Port of the microphone server, e.g. 8888
     log_level : int
         Logging level; INFO=20 (default), DEBUG=10
     """
 
-    def __init__(self, server, port, log_level=logging.INFO) -> None:
+    def __init__(self, host, port, log_level=logging.INFO) -> None:
         self.log: logging.Logger = logging.getLogger()
 
         if not self.log.hasHandlers():
             self.log.addHandler(logging.StreamHandler())
 
-        self.server: str = server
-        self.port: str = port
+        self.host: str = host
+        self.port: int = port
         self.log.setLevel(log_level)
 
-        self.station: Station = Station(log=self.log)
+        self.station: Station = Station(self.host, self.port, self.log)
         self._wait_forever_task: Optional[asyncio.Future] = None
 
     async def run_broadcaster(self):
@@ -127,9 +129,8 @@ class AudioBroadcasterServer:
             )
 
         app = make_tornado_app()
-        app.listen(8888)
-        self.station.connect(self.server, int(self.port))
-        self.log.info(f"Connected to {self.server}:{self.port}")
+        app.listen(self.web_server_port)
+        self.station.connect()
 
         start_task = asyncio.create_task(self.station.start_fill_buffer())
 
@@ -180,7 +181,7 @@ class AudioBroadcasterServer:
                 "See `--help` for more information."
             )
 
-        if args.port == "":
+        if args.port is None:
             raise RuntimeError(
                 "At least one port must be provided. "
                 "See `--help` for more information."
@@ -210,7 +211,7 @@ class AudioBroadcasterServer:
 
         parser.add_argument(
             "port",
-            type=str,
+            type=int,
             help="Port of the microphone server, e.g. '8888'",
         )
 
@@ -223,6 +224,10 @@ class AudioBroadcasterServer:
         )
 
         return parser
+
+    @property
+    def web_server_port(self):
+        return int(os.environ.get("WEBSERVER_PORT", "8888"))
 
 
 def run_audio_broadcaster():

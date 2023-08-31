@@ -27,15 +27,19 @@ class Station:
         Logger to use for logging
     """
 
-    def __init__(self, log):
+    def __init__(self, host, port, log):
+        self.host: str = host
+        self.port: int = port
         self.log: logging.Logger = log.getChild(type(self).__name__)
         self.sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # self.pyaudio = pyaudio.PyAudio()
         self.buffer: list = []
         self.current_pos: Optional[int] = None
         self._connected_mic: bool = False
+        self.buffer_fill_interval: float = 0.00001
+        self.max_buffer_len: int = 1000
+        self.max_reconnection_attempts: int = 5
 
-    def connect(self, host: str, port: int):
+    def connect(self):
         """Connect to the microphone server with a socket connection.
 
         Parameters
@@ -50,17 +54,11 @@ class Station:
         RuntimeError
             If host or port are empty
             If the socket connection is already established
+            If the socket connection fails
         """
-
-        if host == "" or port is None:
-            raise RuntimeError("Host or port cannot be empty!")
-
-        if self._connected_mic:
-            raise RuntimeError("Already connected to microphone!")
-
-        self.sock.connect((host, port))
+        self.sock.connect((self.host, self.port))
         self._connected_mic = True
-        self.log.info(f"Connected to {host}:{port}")
+        self.log.info(f"Connected to microphone at {self.host}:{self.port}")
 
     def add_frame_to_buffer(self, frame):
         self.buffer.append(frame)
@@ -78,13 +76,16 @@ class Station:
         """Start filling the buffer with audio data from the microphone server.
 
         This method will run forever until the socket connection is broken.
+        When this happens the method will try to reconnect to the
+        microphone server `self.max_reconnection_attempts` times.
 
         Notes
         -----
         This method will add an audio frame to the buffer every time the
         internal buffer is filled with enough data for playback.
 
-        If the station buffer reaches 1000 frames, it will be emptied.
+        If the station buffer reaches `self.max_buffer_len` frames,
+        it will be emptied.
 
         Raises
         ------
@@ -92,27 +93,39 @@ class Station:
             If the microphone is not connected
             If the socket connection is broken
         """
-        self.assert_microphone_connected()
         self.log.info("Filling buffer...")
+        reconnection_attemps = 0
         audio_buffer = b""
-        try:
-            while True:
-                if len(self.buffer) >= 1000:
+        while True:
+            try:
+                self.assert_microphone_connected()
+                self.max_reconnection_attempts = 5
+                if len(self.buffer) >= self.max_buffer_len:
                     self.set_emtpy_buffer()
 
-                await asyncio.sleep(0.00001)
+                await asyncio.sleep(self.buffer_fill_interval)
                 data = self.sock.recv(CHUNK)
                 if data == b"":
-                    raise RuntimeError("socket connection broken")
+                    raise RuntimeError("Socket connection broken")
                 audio_buffer += data
 
                 if len(audio_buffer) >= int(RATE * BUFFER_DURATION):
                     frame = audio_buffer[:CHUNK]
                     self.add_frame_to_buffer(frame)
                     audio_buffer = audio_buffer[CHUNK:]
-        except Exception:
-            # TODO: Handle this better
-            pass
+            except Exception as e:
+                self.log.warning(f"{e}, retrying connection...")
+                await asyncio.sleep(1)
+                reconnection_attemps += 1
+                if reconnection_attemps <= self.max_reconnection_attempts:
+                    try:
+                        self.connect()
+                        self.set_emtpy_buffer()
+                        continue
+                    except Exception:
+                        continue
+                break
+        self.log.info("Stopped filling buffer.")
 
     async def transform_and_transmit(self, buffer: list):
         """Create a wave file from the buffer and transmit it to the client
@@ -129,10 +142,9 @@ class Station:
             Bytes of the mp3 file
         """
         self.log.debug("Transforming and transmitting...")
-        wave_file_name = "test_audio.wav"
+        wave_file_name = "output.wav"
         with wave.open(wave_file_name, "wb") as wf:
             wf.setnchannels(CHANNELS)
-            # wf.setsampwidth(self.pyaudio.get_sample_size(FORMAT))
             wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
             wf.setframerate(RATE)
 
@@ -152,4 +164,3 @@ class Station:
     def clean(self):
         self.log.info("Cleaning up...")
         self.sock.close()
-        # self.pyaudio.terminate()
