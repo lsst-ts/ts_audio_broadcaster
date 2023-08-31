@@ -33,9 +33,12 @@ CHUNK = 4096
 
 
 class MockSocketServer:
-    def __init__(self):
+    def __init__(self, with_fail=False):
         self.current_chunk = 0
+        self.sent_fames = 0
         self.audio_frames = []
+        self.with_fail = with_fail
+        self.sent_frames_before_fail = 100
         with open("tests/data/audio_sample.wav", "rb") as f:
             audio_frame = f.read(CHUNK)
             while audio_frame:
@@ -43,18 +46,25 @@ class MockSocketServer:
                 audio_frame = f.read(CHUNK)
 
     def connect(self, host_tuple):
-        print(f"Connected to mock microphone server: {host_tuple}!", flush=True)
+        pass
+
+    def close(self):
         pass
 
     def recv(self, CHUNK):
-        print(f"Sending audio frame {self.current_chunk}...", flush=True)
         audio_frame = self.audio_frames[self.current_chunk]
         time.sleep(0.01)
+
+        if self.with_fail and self.sent_fames > self.sent_frames_before_fail:
+            self.sent_fames = 0
+            return b""
+
         if self.current_chunk < len(self.audio_frames) - 1:
             self.current_chunk += 1
         else:
             self.current_chunk = 0
 
+        self.sent_fames += 1
         return audio_frame
 
 
@@ -67,11 +77,10 @@ class TestStation(unittest.IsolatedAsyncioTestCase):
         self.socket_patcher = patch("socket.socket")
         self.socket_mock = self.socket_patcher.start()
         self.socket_mock.return_value = MockSocketServer()
-
-        self.station = Station(self.log)
-        self.mic_server = None
+        self.station = Station("0.0.0.0", 9999, self.log)
 
     def tearDown(self) -> None:
+        self.station.clean()
         self.socket_patcher.stop()
 
     def test_mock_socket_server(self):
@@ -79,8 +88,42 @@ class TestStation(unittest.IsolatedAsyncioTestCase):
 
     def test_connect(self):
         """Test that the station can connect to the microphone server."""
-        self.station.connect("0.0.0.0", 9999)
+        self.station.connect()
         self.station.assert_microphone_connected()
+
+    async def test_start_fill_buffer_with_disconnect(self):
+        """Test that the station can start filling the buffer with
+        audio data from the microphone server.
+
+        This method will run forever until the socket connection is broken.
+        This will raise an exception that will be catched by the station.
+        Then the station will try to reconnect to the microphone server.
+        The station buffer should be emptied after the reconnection.
+        """
+        socket_patcher = patch("socket.socket")
+        socket_mock = socket_patcher.start()
+        socket_mock.return_value = MockSocketServer(with_fail=True)
+        self.station = Station("0.0.0.0", 9999, self.log)
+
+        self.station.connect()
+        station_buffering_task = asyncio.create_task(self.station.start_fill_buffer())
+        prev_buffer_len = 0
+        while True:
+            await asyncio.sleep(1)
+            if len(self.station.buffer) < prev_buffer_len:
+                self.station.assert_microphone_connected()
+                break
+            prev_buffer_len = len(self.station.buffer)
+
+        prev_buffer_len = 0
+        while True:
+            await asyncio.sleep(1)
+            if len(self.station.buffer) == 0:
+                continue
+            assert len(self.station.buffer) > prev_buffer_len
+            break
+        station_buffering_task.cancel()
+        socket_patcher.stop()
 
     async def test_start_fill_buffer(self):
         """Test that the station can start filling the buffer with
@@ -88,14 +131,13 @@ class TestStation(unittest.IsolatedAsyncioTestCase):
 
         This method will run forever until the buffer has a len of 10.
         """
-        self.station.connect("0.0.0.0", 9999)
+        self.station.connect()
         station_buffering_task = asyncio.create_task(self.station.start_fill_buffer())
         while True:
             if len(self.station.buffer) >= 10:
                 break
             await asyncio.sleep(1)
         station_buffering_task.cancel()
-
         assert len(self.station.buffer) >= 10
 
     async def test_transform_and_transmit(self):
@@ -103,7 +145,7 @@ class TestStation(unittest.IsolatedAsyncioTestCase):
 
         This method will run forever until the client buffer has a len of 10.
         """
-        self.station.connect("0.0.0.0", 9999)
+        self.station.connect()
         station_buffering_task = asyncio.create_task(self.station.start_fill_buffer())
         from_pos = 0
         while True:
@@ -119,3 +161,6 @@ class TestStation(unittest.IsolatedAsyncioTestCase):
         station_buffering_task.cancel()
 
         assert len(mp3_buffer) > 0
+
+    # TODO: Add test to check if generated audio chunks are valid mp3 format
+    # TODO: Add test to check the quality of the audio
