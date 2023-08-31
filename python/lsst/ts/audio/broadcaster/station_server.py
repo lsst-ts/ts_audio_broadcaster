@@ -175,7 +175,7 @@ class AudioBroadcasterServer:
 
         logging.basicConfig(level=args.log_level)
 
-        if args.server == "":
+        if args.host == "":
             raise RuntimeError(
                 "At least one server must be provided. "
                 "See `--help` for more information."
@@ -188,7 +188,7 @@ class AudioBroadcasterServer:
             )
 
         audio_broadcaster_set = cls(
-            server=args.server,
+            host=args.host,
             port=args.port,
             log_level=args.log_level,
         )
@@ -204,7 +204,7 @@ class AudioBroadcasterServer:
         )
 
         parser.add_argument(
-            "server",
+            "host",
             type=str,
             help="IP of the microphone server, e.g. '10.10.1.1'",
         )

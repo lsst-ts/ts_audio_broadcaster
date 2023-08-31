@@ -3,7 +3,7 @@ __all__ = ["Station"]
 import asyncio
 import logging
 import socket
-import wave
+from io import BytesIO
 from typing import Optional
 
 import pyaudio
@@ -128,8 +128,8 @@ class Station:
         self.log.info("Stopped filling buffer.")
 
     async def transform_and_transmit(self, buffer: list):
-        """Create a wave file from the buffer and transmit it to the client
-        through mp3 bytes chunks.
+        """Transform audio frames to mp3 and transmit them
+        to the client by chunks.
 
         Parameters
         ----------
@@ -142,24 +142,20 @@ class Station:
             Bytes of the mp3 file
         """
         self.log.debug("Transforming and transmitting...")
-        wave_file_name = "output.wav"
-        with wave.open(wave_file_name, "wb") as wf:
-            wf.setnchannels(CHANNELS)
-            wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
-            wf.setframerate(RATE)
-
-            for frame in buffer:
-                wf.writeframes(frame)
-
-        exported_file = "output.mp3"
-        audio_segment = AudioSegment.from_file(wave_file_name)
-        audio_segment.export(exported_file, format="mp3")
-
-        with open(exported_file, "rb") as f:
-            data = f.read(CHUNK)
-            while data:
-                yield data
-                data = f.read(CHUNK)
+        audio_data = b"".join(buffer)
+        audio_segment = AudioSegment(
+            audio_data,
+            sample_width=pyaudio.get_sample_size(FORMAT),
+            frame_rate=RATE,
+            channels=CHANNELS,
+        )
+        mp3_output = BytesIO()
+        audio_segment.export(mp3_output, format="mp3")
+        mp3_output.seek(0)
+        data = mp3_output.read(CHUNK)
+        while data:
+            yield data
+            data = mp3_output.read(CHUNK)
 
     def clean(self):
         self.log.info("Cleaning up...")

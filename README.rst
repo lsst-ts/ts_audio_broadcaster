@@ -13,7 +13,7 @@ Configuration
 The service is configured via the following environment variables;
 All are optional except the few marked "(required)":
 
-* ``SERVICE_PORT`` (required): port to listen on; default=8888.
+* ``WEBSERVER_PORT`` (required): port for the tornado web server; default=8888.
 
 Development
 -----------
