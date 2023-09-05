@@ -9,6 +9,11 @@ license = { text = "GPL" }
 classifiers = [ "Programming Language :: Python :: 3" ]
 urls = { documentation = "https://ts-audio-broadcaster.lsst.io", repository = "https://github.com/lsst-ts/ts_audio_broadcaster" }
 dynamic = [ "version" ]
+dependencies = [
+    'pyaudio >= 0.2.13, < 1',
+    'pydub >= 0.25.1, < 1',
+    'tornado >= 6.3.3, < 7',
+]
 
 [project.scripts]
 run_audio_broadcaster = "lsst.ts.audio.broadcaster:run_audio_broadcaster"
