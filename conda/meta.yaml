@@ -1,0 +1,29 @@
+{% set data= load_setup_py_data() %}
+
+package:
+  name: ts-audio-broadcaster
+  version: {{ data.get('version') }}
+
+source:
+  path: ../
+
+build:
+  noarch: python
+  script: {{ PYTHON }} -m pip install --no-deps --ignore-installed .
+  entry_points:
+    - run_audio_broadcaster = lsst.ts.audio.broadcaster:run_audio_broadcaster
+
+requirements:
+  host:
+    - python {{ python }}
+    - pip
+    - setuptools_scm
+    - setuptools
+    - pytest-runner
+  run:
+    - python {{ python }}
+    - setuptools
+    - setuptools_scm
+    - tornado
+    - pyaudio
+    - pydub
