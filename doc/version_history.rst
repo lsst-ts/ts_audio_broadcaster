@@ -6,6 +6,11 @@
 Version History
 ===============
 
+v0.1.1
+-------
+
+* Add noarch param for conda build.
+
 v0.1.0
 -------
 
