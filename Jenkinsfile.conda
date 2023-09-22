@@ -1,2 +1,2 @@
 @Library('JenkinsShared')_
-CondaPipeline([], "ts-audio-broadcaster", "lsst.ts.audio.broadcaster")
+CondaPipeline([], "ts-audio-broadcaster", "lsst.ts.audio.broadcaster", "noarch")
