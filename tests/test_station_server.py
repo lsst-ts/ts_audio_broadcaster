@@ -1,6 +1,6 @@
-# This file is part of ts_audio_broadcaster.
+# This file is part of ts_audiobroadcaster.
 #
-# Developed for Vera C. Rubin Observatory Telescope and Site Systems.
+# Developed for the Rubin Observatory Telescope and Site System.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -19,10 +19,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-try:
-    from .version import *
-except ImportError:
-    __version__ = "?"
 
-from .station import *
-from .station_server import *
+import logging
+import unittest
+
+
+class TestStationServer(unittest.IsolatedAsyncioTestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.log = logging.getLogger(__name__)
+
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
