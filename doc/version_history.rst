@@ -6,6 +6,11 @@
 Version History
 ===============
 
+v0.1.2
+-------
+
+* Fix client audio buffering.
+
 v0.1.1
 -------
 

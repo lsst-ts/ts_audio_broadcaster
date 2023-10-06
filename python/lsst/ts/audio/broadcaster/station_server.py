@@ -71,6 +71,11 @@ class AudioHandler(tornado.web.RequestHandler):
                     f"Waiting {self.client_buffer_fill_interval} sec for buffer to fill..."
                 )
                 await asyncio.sleep(self.client_buffer_fill_interval)
+
+                # If station.buffer has been emptied,
+                # then we need to reset from_pos
+                if len(client_buffer) == 0:
+                    self.from_pos = 0
                 continue
             async for frame in self.station.transform_and_transmit(client_buffer):
                 self.write(frame)
@@ -130,6 +135,7 @@ class AudioBroadcasterServer:
 
         app = make_tornado_app()
         app.listen(self.web_server_port)
+        self.log.info(f"Web server listening on port {self.web_server_port}...")
         self.station.connect()
 
         start_task = asyncio.create_task(self.station.start_fill_buffer())
