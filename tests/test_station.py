@@ -162,5 +162,26 @@ class TestStation(unittest.IsolatedAsyncioTestCase):
 
         assert len(mp3_buffer) > 0
 
+    async def test_empty_buffer(self):
+        """Test that the station can empty the buffer
+        and continue filling it with audio data from the microphone server.
+        """
+        self.station.connect()
+        current_buffer_len = 0
+        station_buffering_task = asyncio.create_task(self.station.start_fill_buffer())
+        await asyncio.sleep(1)
+        while True:
+            if len(self.station.buffer) > current_buffer_len:
+                current_buffer_len = len(self.station.buffer)
+            else:
+                break
+            await asyncio.sleep(1)
+
+        assert current_buffer_len > len(self.station.buffer)
+        current_buffer_len = len(self.station.buffer)
+        await asyncio.sleep(1)
+        assert len(self.station.buffer) > current_buffer_len
+        station_buffering_task.cancel()
+
     # TODO: Add test to check if generated audio chunks are valid mp3 format
     # TODO: Add test to check the quality of the audio
