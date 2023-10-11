@@ -27,3 +27,4 @@ requirements:
     - tornado
     - pyaudio
     - pydub
+    - ffmpeg

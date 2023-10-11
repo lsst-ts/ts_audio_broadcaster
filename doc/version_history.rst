@@ -6,6 +6,11 @@
 Version History
 ===============
 
+v0.1.3
+------
+
+* Add ffmpeg to conda recipe.
+
 v0.1.2
 -------
 
