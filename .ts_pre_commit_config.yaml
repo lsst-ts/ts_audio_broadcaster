@@ -6,3 +6,4 @@ isort: true
 ruff: true
 clang-format: false
 mypy: false
+towncrier: true
