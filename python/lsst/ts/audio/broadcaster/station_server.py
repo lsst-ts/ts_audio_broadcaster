@@ -60,16 +60,12 @@ class AudioHandler(tornado.web.RequestHandler):
 
     async def get(self):
         self.log.debug("New connection!")
-        self.from_pos = (
-            len(self.station.buffer) - 1 if len(self.station.buffer) > 0 else 0
-        )
+        self.from_pos = len(self.station.buffer) - 1 if len(self.station.buffer) > 0 else 0
         self.set_header("Content-Type", "audio/mpeg")
         while self.is_client_connected:
             client_buffer = self.station.buffer[self.from_pos :]
             if len(client_buffer) < self.client_buffer_min_length:
-                self.log.debug(
-                    f"Waiting {self.client_buffer_fill_interval} sec for buffer to fill..."
-                )
+                self.log.debug(f"Waiting {self.client_buffer_fill_interval} sec for buffer to fill...")
                 await asyncio.sleep(self.client_buffer_fill_interval)
 
                 # If station.buffer has been emptied,
@@ -182,16 +178,10 @@ class AudioBroadcasterServer:
         logging.basicConfig(level=args.log_level)
 
         if args.host == "":
-            raise RuntimeError(
-                "At least one server must be provided. "
-                "See `--help` for more information."
-            )
+            raise RuntimeError("At least one server must be provided. See `--help` for more information.")
 
         if args.port is None:
-            raise RuntimeError(
-                "At least one port must be provided. "
-                "See `--help` for more information."
-            )
+            raise RuntimeError("At least one port must be provided. See `--help` for more information.")
 
         audio_broadcaster_set = cls(
             host=args.host,
