@@ -10,6 +10,7 @@ source:
 build:
   noarch: python
   script: {{ PYTHON }} -m pip install --no-deps --ignore-installed .
+  string: "py{{ PY_VER | replace('.', '') }}{{ PKG_HASH }}_{{ PKG_BUILDNUM }}"
   entry_points:
     - run_audio_broadcaster = lsst.ts.audio.broadcaster:run_audio_broadcaster
 
