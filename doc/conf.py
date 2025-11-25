@@ -2,6 +2,7 @@
 
 This configuration only affects single-package Sphinx documentation builds.
 """
+
 from documenteer.conf.pipelinespkg import *  # type: ignore # noqa
 
 project = "ts_audio_broadcaster"
